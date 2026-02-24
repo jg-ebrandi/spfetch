@@ -72,36 +72,62 @@ pip install spfetch[pandas]
 ---
 
 # 🚀 Quickstart
+Since spfetch is built for modern data engineering, all network operations are asynchronous.
 
 ---
 
 ## 🔐 1️⃣ Authenticate (Device Code / MFA)
 
-```python
-import spfetch as sp
+For Local Development (Device Code / MFA)
+Works with MFA-enabled accounts. No secrets required.
 
-client = sp.connect_device_code(
+```python
+from spfetch.auth import DeviceCodeAuth
+from spfetch.client import SharePointClient
+
+auth = DeviceCodeAuth(
     tenant_id="YOUR_TENANT_ID",
-    client_id="YOUR_CLIENT_ID",
+    client_id="YOUR_CLIENT_ID"
 )
+client = SharePointClient(auth=auth)
 ```
 
 ✔️ Works with MFA-enabled accounts  
 ✔️ No secrets required  
 ✔️ Ideal for local development  
 
+For CI/CD & Automated Pipelines (Client Secret)
+
+```python
+from spfetch.auth import ClientSecretAuth
+
+auth = ClientSecretAuth(
+    tenant_id="YOUR_TENANT_ID",
+    client_id="YOUR_CLIENT_ID",
+    client_secret="YOUR_CLIENT_SECRET"
+)
+client = SharePointClient(auth=auth)
+```
+
 ---
 
 ## 📂 2️⃣ List a Folder
 
 ```python
-items = client.ls(
-    site_url="https://tenant.sharepoint.com/sites/MySite",
-    folder="/Shared Documents/Reports",
-)
+import asyncio
 
-for item in items:
-    print(item.name, item.is_folder, item.size)
+async def main():
+    items = await client.ls(
+        hostname="tenant.sharepoint.com",
+        site_path="/sites/MySite",
+        folder_path="/Shared Documents/Reports"
+    )
+
+    for item in items:
+        icon = "📁" if item["is_folder"] else "📄"
+        print(f"{icon} {item['name']} | Size: {item['size']} | ID: {item['id']}")
+
+asyncio.run(main())
 ```
 
 Returns structured metadata for files and folders.
@@ -109,15 +135,18 @@ Returns structured metadata for files and folders.
 ---
 
 ## ⬇️ 3️⃣ Streaming Download (Recommended for Large Files)
+🔥 Files are streamed in chunks — no full in-memory loading. Perfect for large CSVs, parquet files, and data pipelines.
 
 ### 🖥️ Download to Local Filesystem
 
 ```python
-client.download(
-    site_url="https://tenant.sharepoint.com/sites/MySite",
-    path="/Shared Documents/Big/base.csv",
-    dst="stage/base.csv",
-)
+async def main():
+    await client.download(
+        hostname="tenant.sharepoint.com",
+        site_path="/sites/MySite",
+        file_path="/Shared Documents/Big/base.csv",
+        dest_path="stage/base.csv"
+    )
 ```
 
 ---
@@ -125,11 +154,20 @@ client.download(
 ### ☁️ Download Directly to Cloud Storage
 
 ```python
-client.download(
-    site_url="https://tenant.sharepoint.com/sites/MySite",
-    path="/Shared Documents/Big/base.csv",
-    dst="gs://my-bucket/stage/base.csv",  # or s3://... or abfss://...
-)
+from spfetch.destinations import S3Destination
+# from spfetch.destinations import AzureDestination, GCSDestination
+
+async def main():
+    # Pass your cloud credentials configuration
+    s3_dest = S3Destination(key="AWS_KEY", secret="AWS_SECRET")
+
+    await client.download(
+        hostname="tenant.sharepoint.com",
+        site_path="/sites/MySite",
+        file_path="/Shared Documents/Big/base.csv",
+        dest_path="s3://my-bucket/stage/base.csv",
+        destination=s3_dest
+    )
 ```
 
 🔥 Files are streamed in chunks — no full in-memory loading.
@@ -139,18 +177,34 @@ Perfect for large CSVs, parquet files, exports, and data pipelines.
 ---
 
 ## 📊 4️⃣ Read Small Files into pandas (Optional)
+`read_df` automatically detects `.csv`, `.xlsx`, or `.xls` and loads it into memory without writing to disk.
 
 ```python
-df = client.read_excel(
-    site_url="https://tenant.sharepoint.com/sites/MySite",
-    path="/Shared Documents/Reports/sales.xlsx",
-    sheet_name="Base",
-    usecols="B:F",
-    skiprows=8,
-)
+async def main():
+    df = await client.read_df(
+        hostname="tenant.sharepoint.com",
+        site_path="/sites/MySite",
+        file_path="/Shared Documents/Reports/sales.xlsx",
+        sheet_name="Base", # Passed down to pandas
+        usecols="B:F",
+        skiprows=8
+    )
+    print(df.head())
 ```
 
 > ⚠️ For very large files, prefer `download()` and process them using Spark, Dask, or your data engine of choice.
+
+---
+
+## 🛡️ Resilience (Handling HTTP 429)
+`spfetch` includes a built-in resilience layer. If Microsoft Graph throws an `HTTP 429 Too Many Requests` error, the client will automatically:
+
+1. Catch the error.
+2. Read the `Retry-After` header provided by Microsoft.
+3. Pause execution asynchronously using Exponential Backoff.
+4. Retry the request automatically up to `max_retries` (Default: 3 for API calls, 5 for downloads).
+
+Your pipelines will simply wait and recover gracefully.
 
 ---
 
@@ -222,9 +276,9 @@ PRs are welcome!
 
 Please:
 
-- Add tests for new features  
-- Keep public APIs documented  
-- Maintain backward compatibility when possible  
+- Check our `CONTRIBUTING.md`.
+- Ensure all tests pass `via make test`.
+- We use the Conventional Commits specification.
 
 ---
 

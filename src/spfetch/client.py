@@ -6,6 +6,7 @@ import io
 from typing import Any, Optional
 from urllib.parse import quote
 from .auth import SharePointAuth
+from spfetch.utils import retry_on_429
 
 # Configuração padrão do logger para a biblioteca spfetch
 # Standard logger configuration for the spfetch library
@@ -32,7 +33,8 @@ class SharePointClient:
             "Authorization": f"Bearer {token}",
             "Accept": "application/json"
         }
-
+    
+    @retry_on_429(max_retries=3)
     async def _get_site_id(self, http_client: httpx.AsyncClient, hostname: str, site_path: str) -> str:
         """
         Obtém o ID único do Site no SharePoint para evitar erros de formatação (Erro 400).
@@ -51,10 +53,12 @@ class SharePointClient:
             
         return response.json()["id"]
 
+
     # ---------------------------------------------------------
     # TIPO DE INGESTÃO 1: STREAM PARA DESTINO (Disco, S3, GCS)
     # INGESTION TYPE 1: STREAM TO DESTINATION (Disk, S3, GCS)
     # ---------------------------------------------------------
+    @retry_on_429(max_retries=5)
     async def download(
         self, 
         hostname: str, 
@@ -102,10 +106,12 @@ class SharePointClient:
                         
         return dest_path
     
+    
     # ---------------------------------------------------------
     # TIPO DE INGESTÃO 2: DIRETO PARA MEMÓRIA (PANDAS)
     # INGESTION TYPE 2: DIRECT TO MEMORY (PANDAS)
     # ---------------------------------------------------------
+    @retry_on_429(max_retries=3)
     async def read_df(self, hostname: str, site_path: str, file_path: str, **kwargs) -> Any:
         """
         Baixa um arquivo (Excel ou CSV) do SharePoint diretamente para um DataFrame Pandas.
@@ -152,3 +158,53 @@ class SharePointClient:
                 erro_msg = "Formato não suportado. Use .csv, .xlsx ou .xls / Unsupported format. Use .csv, .xlsx, or .xls"
                 logger.error(erro_msg)
                 raise ValueError(erro_msg)
+            
+            
+    # ---------------------------------------------------------
+    # EXPLORAÇÃO: LISTAGEM DE ARQUIVOS E PASTAS
+    # EXPLORATION: FOLDER AND FILE LISTING
+    # ---------------------------------------------------------
+    @retry_on_429(max_retries=3)
+    async def ls(self, hostname: str, site_path: str, folder_path: str = "/") -> list:
+        """
+        Lista o conteúdo de uma pasta no SharePoint e retorna metadados.
+        Lists SharePoint folder contents and returns metadata.
+        """
+        logger.info(f"Iniciando listagem da pasta: '{folder_path}' em {site_path}")
+        
+        async with httpx.AsyncClient(follow_redirects=True) as http_client:
+            # 1. Resolve o Site ID
+            site_id = await self._get_site_id(http_client, hostname, site_path)
+            
+            # 2. Normaliza e codifica o caminho para a Graph API
+            clean_folder_path = folder_path.strip("/")
+            if clean_folder_path:
+                encoded_path = quote(clean_folder_path, safe='/')
+                endpoint = f"{self.base_graph_url}/sites/{site_id}/drive/root:/{encoded_path}:/children"
+            else:
+                endpoint = f"{self.base_graph_url}/sites/{site_id}/drive/root/children"
+
+            logger.debug(f"Requisição para endpoint: {endpoint}")
+            
+            # 3. Executa a chamada com os headers de autenticação
+            response = await http_client.get(endpoint, headers=self._get_headers())
+            
+            if response.status_code != 200:
+                logger.error(f"Erro na API Graph (Status {response.status_code}): {response.text}")
+                response.raise_for_status()
+
+            items = response.json().get("value", [])
+            logger.info(f"Sucesso: {len(items)} itens encontrados em '{folder_path}'.")
+
+        # 4. Retorna metadados estruturados
+        return [
+            {
+                "name": item["name"],
+                "is_folder": "folder" in item,
+                "size": item.get("size", 0),
+                "id": item["id"],
+                "last_modified": item.get("lastModifiedDateTime"),
+                "web_url": item.get("webUrl")
+            }
+            for item in items
+        ]

@@ -1,23 +1,34 @@
 # pyproject.toml
 
 [build-system]
-# Define as ferramentas necessárias para construir o pacote
-# Defines the tools needed to build the package
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "spfetch"
 version = "0.1.0"
-# Descrição curta que aparece no PyPI
-# Short description that appears on PyPI
-description = "Simple. Streaming. MFA-ready. Fetch files from SharePoint via Microsoft Graph."
+description = "Simple. Streaming. Resilient. MFA-ready. Fetch files from SharePoint via Microsoft Graph."
 readme = "README.md"
 requires-python = ">=3.8"
 license = {file = "LICENSE"}
+authors = [
+    {name = "João Guilherme Brandi"} # Adicionei seu nome baseado na LICENSE
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 
-# Dependências principais instaladas por padrão
-# Core dependencies installed by default
 dependencies = [
     "msal>=1.20.0",
     "httpx>=0.24.0",
@@ -25,9 +36,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Dependências opcionais (ex: pip install spfetch[pandas])
-# Optional dependencies (e.g., pip install spfetch[pandas])
 pandas = ["pandas>=1.5.0", "openpyxl>=3.0.0"]
 s3 = ["s3fs>=2023.1.0"]
 gcs = ["gcsfs>=2023.1.0"]
 azure = ["adlfs>=2023.1.0"]
+
+[project.urls]
+Homepage = "https://github.com/jg-ebrandi/spfetch"
+Repository = "https://github.com/jg-ebrandi/spfetch.git"
+Issues = "https://github.com/jg-ebrandi/spfetch/issues"
