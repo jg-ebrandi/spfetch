@@ -6,6 +6,7 @@ import io
 from typing import Any, Optional
 from urllib.parse import quote
 from .auth import SharePointAuth
+from spfetch.utils import retry_on_429
 
 # Configuração padrão do logger para a biblioteca spfetch
 # Standard logger configuration for the spfetch library
@@ -32,7 +33,8 @@ class SharePointClient:
             "Authorization": f"Bearer {token}",
             "Accept": "application/json"
         }
-
+    
+    @retry_on_429(max_retries=3)
     async def _get_site_id(self, http_client: httpx.AsyncClient, hostname: str, site_path: str) -> str:
         """
         Obtém o ID único do Site no SharePoint para evitar erros de formatação (Erro 400).
@@ -56,6 +58,7 @@ class SharePointClient:
     # TIPO DE INGESTÃO 1: STREAM PARA DESTINO (Disco, S3, GCS)
     # INGESTION TYPE 1: STREAM TO DESTINATION (Disk, S3, GCS)
     # ---------------------------------------------------------
+    @retry_on_429(max_retries=5)
     async def download(
         self, 
         hostname: str, 
@@ -108,6 +111,7 @@ class SharePointClient:
     # TIPO DE INGESTÃO 2: DIRETO PARA MEMÓRIA (PANDAS)
     # INGESTION TYPE 2: DIRECT TO MEMORY (PANDAS)
     # ---------------------------------------------------------
+    @retry_on_429(max_retries=3)
     async def read_df(self, hostname: str, site_path: str, file_path: str, **kwargs) -> Any:
         """
         Baixa um arquivo (Excel ou CSV) do SharePoint diretamente para um DataFrame Pandas.
@@ -160,6 +164,7 @@ class SharePointClient:
     # EXPLORAÇÃO: LISTAGEM DE ARQUIVOS E PASTAS
     # EXPLORATION: FOLDER AND FILE LISTING
     # ---------------------------------------------------------
+    @retry_on_429(max_retries=3)
     async def ls(self, hostname: str, site_path: str, folder_path: str = "/") -> list:
         """
         Lista o conteúdo de uma pasta no SharePoint e retorna metadados.
