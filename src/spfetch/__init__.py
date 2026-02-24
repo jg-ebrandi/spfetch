@@ -15,6 +15,7 @@ __all__ = [
     "ClientSecretAuth",
     "LocalDestination",
     "S3Destination",
+    "GCSDestination"
     "AzureDestination",
     "SPFetchError",
     "AuthenticationError"

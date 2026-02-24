@@ -67,3 +67,25 @@ class S3Destination(BaseDestination):
             options["token"] = self.token
             
         return options
+    
+class GCSDestination(BaseDestination):
+    """
+    Configuração para Google Cloud Storage (GCS).
+    Configuration for Google Cloud Storage (GCS).
+    """
+    def __init__(self, token: str = "google_default", project: str = None):
+        """
+        O 'token' pode ser o caminho para o ficheiro JSON da Service Account,
+        ou 'google_default' para usar as credenciais padrão do ambiente.
+        
+        The 'token' can be the path to the Service Account JSON file,
+        or 'google_default' to use the standard environment credentials.
+        """
+        self.token = token
+        self.project = project
+
+    def get_storage_options(self) -> Dict[str, Any]:
+        options = {"token": self.token}
+        if self.project:
+            options["project"] = self.project
+        return options
