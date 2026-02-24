@@ -1,0 +1,33 @@
+# pyproject.toml
+
+[build-system]
+# Define as ferramentas necessárias para construir o pacote
+# Defines the tools needed to build the package
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spfetch"
+version = "0.1.0"
+# Descrição curta que aparece no PyPI
+# Short description that appears on PyPI
+description = "Simple. Streaming. MFA-ready. Fetch files from SharePoint via Microsoft Graph."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+
+# Dependências principais instaladas por padrão
+# Core dependencies installed by default
+dependencies = [
+    "msal>=1.20.0",
+    "httpx>=0.24.0",
+    "fsspec>=2023.1.0"
+]
+
+[project.optional-dependencies]
+# Dependências opcionais (ex: pip install spfetch[pandas])
+# Optional dependencies (e.g., pip install spfetch[pandas])
+pandas = ["pandas>=1.5.0", "openpyxl>=3.0.0"]
+s3 = ["s3fs>=2023.1.0"]
+gcs = ["gcsfs>=2023.1.0"]
+azure = ["adlfs>=2023.1.0"]
