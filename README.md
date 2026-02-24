@@ -2,10 +2,8 @@
 
 ![spfetch_lg](https://github.com/user-attachments/assets/c66f083b-3899-4482-94da-1f85609b357e)
 
-
-
 <p align="center">
-  <b>Simple. Streaming. MFA-ready.</b><br>
+  <b>Simple. Streaming. Resilient. MFA-ready.</b><br>
   List and fetch files from <b>SharePoint</b> via <b>Microsoft Graph</b> with clean APIs and cloud-native downloads.
 </p>
 
@@ -13,281 +11,255 @@
 
 ## ✨ What is spfetch?
 
-`spfetch` is a Python library to:
+`spfetch` is an asynchronous Python library built for data pipelines:
 
-- 📂 List SharePoint folders  
-- ⬇️ Download files in streaming mode  
-- ☁️ Send files directly to S3 / GCS / ADLS  
-- 🔐 Authenticate with MFA (Device Code Flow)  
-- 📊 Optionally read small files into pandas  
-
-Built for data engineers and analytics workflows that need reliability and simplicity.
+- 📂 **List** SharePoint folders with structured metadata.
+- ⬇️ **Stream** large files directly to Local Disk, S3, GCS, or Azure without memory crashes.
+- 📊 **Load** small files directly into Pandas DataFrames.
+- 🔐 **Authenticate** via MFA (Device Code) or Silent (Client Secret) flows.
+- 🛡️ **Auto-Recover** from Microsoft API Throttling (HTTP 429) using Exponential Backoff.
 
 ---
 
-## 🤔 Why?
+## 🔐 1. Authentication
 
-Accessing SharePoint programmatically usually involves:
+Before running any workflow, you must instantiate the client with your Microsoft Entra ID (Azure AD) credentials.
 
-- 🔐 Complex authentication flows (MFA included)  
-- 🔎 Confusing browser URLs vs API paths  
-- 🚦 Throttling (HTTP 429)  
-- 🧠 Memory issues when handling large files  
-
-`spfetch` solves this with:
-
-- ✅ MFA-compatible authentication  
-- ✅ Streaming-first downloads (no full in-memory load)  
-- ✅ fsspec integration (cloud-native destinations)  
-- ✅ Minimal and explicit API  
-
----
-
-## 📦 Installation
-
-### Core
-
-```bash
-pip install spfetch
-```
-
----
-
-### ☁️ Cloud destinations (optional)
-
-```bash
-pip install spfetch[s3]     # Amazon S3 (s3fs)
-pip install spfetch[gcs]    # Google Cloud Storage (gcsfs)
-pip install spfetch[azure]  # Azure Data Lake (adlfs)
-```
-
----
-
-### 📊 Pandas helpers (optional)
-
-```bash
-pip install spfetch[pandas]
-```
-
----
-
-# 🚀 Quickstart
-Since spfetch is built for modern data engineering, all network operations are asynchronous.
-
----
-
-## 🔐 1️⃣ Authenticate (Device Code / MFA)
-
-For Local Development (Device Code / MFA)
-Works with MFA-enabled accounts. No secrets required.
+### Option A: Interactive / Local (Device Code Flow)
+Ideal for local scripts. Supports MFA.
 
 ```python
 from spfetch.auth import DeviceCodeAuth
 from spfetch.client import SharePointClient
 
-auth = DeviceCodeAuth(
-    tenant_id="YOUR_TENANT_ID",
-    client_id="YOUR_CLIENT_ID"
-)
+auth = DeviceCodeAuth(tenant_id="<YOUR_TENANT_ID>", client_id="<YOUR_CLIENT_ID>")
 client = SharePointClient(auth=auth)
 ```
 
-✔️ Works with MFA-enabled accounts  
-✔️ No secrets required  
-✔️ Ideal for local development  
-
-For CI/CD & Automated Pipelines (Client Secret)
+### Option B: Automated / CI-CD (Client Secret Flow)
+Ideal for Airflow, Databricks, or GitHub Actions.
 
 ```python
 from spfetch.auth import ClientSecretAuth
+from spfetch.client import SharePointClient
 
 auth = ClientSecretAuth(
-    tenant_id="YOUR_TENANT_ID",
-    client_id="YOUR_CLIENT_ID",
-    client_secret="YOUR_CLIENT_SECRET"
+    tenant_id="<YOUR_TENANT_ID>", 
+    client_id="<YOUR_CLIENT_ID>", 
+    client_secret="<YOUR_CLIENT_SECRET>"
 )
 client = SharePointClient(auth=auth)
 ```
 
 ---
 
-## 📂 2️⃣ List a Folder
+## 📖 2. Exploration: Listing Folders
+
+📦 Required Installation:
+
+```bash
+pip install spfetch
+```
 
 ```python
 import asyncio
 
-async def main():
+async def list_files():
     items = await client.ls(
-        hostname="tenant.sharepoint.com",
-        site_path="/sites/MySite",
-        folder_path="/Shared Documents/Reports"
+        hostname="<tenant>.sharepoint.com",
+        site_path="/sites/<YourSite>",
+        folder_path="/Shared Documents/General"
     )
-
     for item in items:
-        icon = "📁" if item["is_folder"] else "📄"
-        print(f"{icon} {item['name']} | Size: {item['size']} | ID: {item['id']}")
+        print(item["name"], item["size"], item["is_folder"])
 
-asyncio.run(main())
+asyncio.run(list_files())
 ```
-
-Returns structured metadata for files and folders.
 
 ---
 
-## ⬇️ 3️⃣ Streaming Download (Recommended for Large Files)
-🔥 Files are streamed in chunks — no full in-memory loading. Perfect for large CSVs, parquet files, and data pipelines.
+## 🌊 3. Ingestion Workflows
 
-### 🖥️ Download to Local Filesystem
+### 💻 Workflow A: Download to Local Disk
+
+📦 Required Installation:
+
+```bash
+pip install spfetch
+```
 
 ```python
-async def main():
+from spfetch.destinations import LocalDestination
+import asyncio
+
+async def download_local():
+    # 1. Setup local destination
+    dest = LocalDestination()
+    
+    # 2. Stream to disk
     await client.download(
-        hostname="tenant.sharepoint.com",
-        site_path="/sites/MySite",
-        file_path="/Shared Documents/Big/base.csv",
-        dest_path="stage/base.csv"
+        hostname="<tenant>.sharepoint.com",
+        site_path="/sites/<YourSite>",
+        file_path="/Shared Documents/Data/file.csv",
+        dest_path="./local_downloads/file.csv",  # Local file path
+        destination=dest
     )
+
+asyncio.run(download_local())
 ```
 
 ---
 
-### ☁️ Download Directly to Cloud Storage
+### ☁️ Workflow B: Download directly to Azure (ADLS / Blob)
+
+📦 Required Installation:
+
+```bash
+pip install "spfetch[azure]"
+```
+
+```python
+from spfetch.destinations import AzureDestination
+import asyncio
+
+async def download_to_azure():
+    # 1. Setup Azure credentials
+    dest = AzureDestination(
+        account_name="<YOUR_STORAGE_ACCOUNT_NAME>",
+        account_key="<YOUR_STORAGE_ACCOUNT_KEY>"  # Or sas_token="<YOUR_SAS_TOKEN>"
+    )
+    
+    # 2. Stream directly to Azure (abfs://)
+    await client.download(
+        hostname="<tenant>.sharepoint.com",
+        site_path="/sites/<YourSite>",
+        file_path="/Shared Documents/Data/file.parquet",
+        dest_path="abfs://<container_name>/bronze/file.parquet",
+        destination=dest
+    )
+
+asyncio.run(download_to_azure())
+```
+
+---
+
+### ☁️ Workflow C: Download directly to Amazon S3
+
+📦 Required Installation:
+
+```bash
+pip install "spfetch[s3]"
+```
 
 ```python
 from spfetch.destinations import S3Destination
-# from spfetch.destinations import AzureDestination, GCSDestination
+import asyncio
 
-async def main():
-    # Pass your cloud credentials configuration
-    s3_dest = S3Destination(key="AWS_KEY", secret="AWS_SECRET")
-
-    await client.download(
-        hostname="tenant.sharepoint.com",
-        site_path="/sites/MySite",
-        file_path="/Shared Documents/Big/base.csv",
-        dest_path="s3://my-bucket/stage/base.csv",
-        destination=s3_dest
+async def download_to_s3():
+    # 1. Setup AWS credentials
+    dest = S3Destination(
+        key="<AWS_ACCESS_KEY_ID>",
+        secret="<AWS_SECRET_ACCESS_KEY>"
     )
+    
+    # 2. Stream directly to S3 (s3://)
+    await client.download(
+        hostname="<tenant>.sharepoint.com",
+        site_path="/sites/<YourSite>",
+        file_path="/Shared Documents/Data/file.csv",
+        dest_path="s3://<bucket_name>/raw/file.csv",
+        destination=dest
+    )
+
+asyncio.run(download_to_s3())
 ```
-
-🔥 Files are streamed in chunks — no full in-memory loading.
-
-Perfect for large CSVs, parquet files, exports, and data pipelines.
 
 ---
 
-## 📊 4️⃣ Read Small Files into pandas (Optional)
-`read_df` automatically detects `.csv`, `.xlsx`, or `.xls` and loads it into memory without writing to disk.
+### ☁️ Workflow D: Download directly to Google Cloud Storage (GCS)
+
+📦 Required Installation:
+
+```bash
+pip install "spfetch[gcs]"
+```
 
 ```python
-async def main():
+from spfetch.destinations import GCSDestination
+import asyncio
+
+async def download_to_gcs():
+    # 1. Setup GCS credentials (can use default environment or token path)
+    dest = GCSDestination(
+        project="<my-gcp-project-id>",
+        token="google_default"  # Or path to service_account.json
+    )
+    
+    # 2. Stream directly to GCS (gs://)
+    await client.download(
+        hostname="<tenant>.sharepoint.com",
+        site_path="/sites/<YourSite>",
+        file_path="/Shared Documents/Data/file.csv",
+        dest_path="gs://<bucket_name>/raw/file.csv",
+        destination=dest
+    )
+
+asyncio.run(download_to_gcs())
+```
+
+---
+
+### 📊 Workflow E: Read directly to Pandas DataFrame
+
+📦 Required Installation:
+
+```bash
+pip install "spfetch[pandas]"
+```
+
+Ideal for smaller files (`.csv`, `.xlsx`). This method skips saving to disk and loads the file straight into memory.
+
+```python
+import asyncio
+
+async def read_to_memory():
+    # client.read_df accepts all standard pandas kwargs (sheet_name, sep, skiprows, etc.)
     df = await client.read_df(
-        hostname="tenant.sharepoint.com",
-        site_path="/sites/MySite",
-        file_path="/Shared Documents/Reports/sales.xlsx",
-        sheet_name="Base", # Passed down to pandas
-        usecols="B:F",
-        skiprows=8
+        hostname="<tenant>.sharepoint.com",
+        site_path="/sites/<YourSite>",
+        file_path="/Shared Documents/Reports/data.xlsx",
+        sheet_name="Sheet1",
+        skiprows=2,
+        usecols="A:D"
     )
     print(df.head())
+
+asyncio.run(read_to_memory())
 ```
 
-> ⚠️ For very large files, prefer `download()` and process them using Spark, Dask, or your data engine of choice.
+---
+
+## 🛡️ 4. Resilience (Handling HTTP 429)
+
+Microsoft Graph API strictly throttles heavy requests. spfetch handles this out-of-the-box.
+
+If a `429 Too Many Requests` occurs, the client automatically:
+
+- Pauses execution.
+- Reads the `Retry-After` header.
+- Applies Exponential Backoff.
+- Retries seamlessly (up to 5 times for downloads).
+
+Your pipeline won't crash; it will simply wait and recover gracefully.
 
 ---
 
-## 🛡️ Resilience (Handling HTTP 429)
-`spfetch` includes a built-in resilience layer. If Microsoft Graph throws an `HTTP 429 Too Many Requests` error, the client will automatically:
+## 🤝 Contributing
 
-1. Catch the error.
-2. Read the `Retry-After` header provided by Microsoft.
-3. Pause execution asynchronously using Exponential Backoff.
-4. Retry the request automatically up to `max_retries` (Default: 3 for API calls, 5 for downloads).
-
-Your pipelines will simply wait and recover gracefully.
+PRs are welcome! Check our `CONTRIBUTING.md`. Ensure all tests pass via `make test`.
 
 ---
 
-# 🔐 Microsoft Entra ID (Azure AD) Setup
-
-To use `spfetch`, create an **App Registration** in Microsoft Entra ID.
-
----
-
-## 🧭 Setup Steps
-
-1. Create an **App Registration**
-2. Copy the `tenant_id`
-3. Copy the `client_id`
-4. Enable **Public client flows** (Device Code flow)
-5. Grant required Microsoft Graph permissions
-6. (If needed) Request **Admin Consent**
-
----
-
-## 🔑 Required Permissions
-
-Minimum permissions depend on your use case.
-
-### 📖 Read-only access
-
-```
-Sites.Read.All
-```
-
-### ✍️ Read & Write access
-
-```
-Sites.ReadWrite.All
-```
-
-Some tenants may require:
-
-- Admin consent  
-- Site-specific permission configuration  
-
----
-
-# 🧱 Design Principles
-
-- 🔐 MFA-first authentication  
-- 🌊 Streaming over buffering  
-- ☁️ Cloud-native architecture  
-- 🧩 Minimal API surface  
-- 🔎 Explicit behavior over magic  
-
----
-
-# 🗺️ Roadmap
-
-Planned features:
-
-- 🔑 `connect_client_secret()` for pipelines / CI  
-- 🔄 `sync_folder()` with ETag / Last-Modified support  
-- 🧭 Path and URL normalization helpers  
-- 📊 Richer metadata filtering  
-- 🔁 Configurable retry / backoff strategy  
-
----
-
-# 🤝 Contributing
-
-PRs are welcome!
-
-Please:
-
-- Check our `CONTRIBUTING.md`.
-- Ensure all tests pass `via make test`.
-- We use the Conventional Commits specification.
-
----
-
-# 📄 License
+## 📄 License
 
 MIT
-
----
-
-<p align="center">
-  Built for modern data workflows 🚀
-</p>
