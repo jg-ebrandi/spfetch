@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {file = "LICENSE"}
 authors = [
-    {name = "João Guilherme Brandi"} # Adicionei seu nome baseado na LICENSE
+    {name = "João Guilherme Evangelista Brandi"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
