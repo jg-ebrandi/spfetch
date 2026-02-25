@@ -1,6 +1,6 @@
 # Makefile
 
-.PHONY: install install-all test clean clean-data
+.PHONY: install install-all test clean clean-data build publish
 
 # Instala a biblioteca em modo de desenvolvimento (editável) com as dependências base
 # Installs the library in development (editable) mode with base dependencies
@@ -27,3 +27,13 @@ clean:
 # Cleans locally downloaded files during manual tests in the root
 clean-data:
 	rm -f *.xlsx *.csv *.xls
+
+# Gera os arquivos de distribuição (.tar.gz e .whl) para o PyPI
+# Generates the distribution files (.tar.gz and .whl) for PyPI
+build: clean
+	python -m build
+
+# Faz o upload da versão buildada para o PyPI (requer twine)
+# Uploads the built version to PyPI (requires twine)
+publish: build
+	twine upload dist/*
