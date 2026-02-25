@@ -53,7 +53,70 @@ client = SharePointClient(auth=auth)
 
 ---
 
-## 📖 2. Exploration: Listing Folders
+## 📊 2. Telemetry and Progress Bar (Logging)
+
+By default, **spfetch** follows Python's golden rule and does not force any logging configuration on your environment (`NullHandler`). It also automatically silences verbose logs from third-party libraries (such as Azure/S3/GCS SDKs and `httpx`) to keep your terminal clean.
+
+If you are running standalone scripts, Jupyter notebooks, or simply want to visualize the download status in real-time, just import and call the `enable_console_logs()` function. 
+
+This will activate a **native progress bar (via tqdm)** and display bilingual transfer speed metrics (Portuguese/English):
+
+```python
+import asyncio
+from spfetch.auth import ClientSecretAuth
+from spfetch.client import SharePointClient
+from spfetch.destinations import LocalDestination
+
+# 1. Import the helper function
+from spfetch import enable_console_logs
+
+# 2. Enable clean logs and the progress bar in the terminal
+enable_console_logs()
+
+async def main():
+    sp_auth = ClientSecretAuth(
+        tenant_id="YOUR_TENANT_ID",
+        client_id="YOUR_CLIENT_ID",
+        client_secret="YOUR_CLIENT_SECRET"
+    )
+    client = SharePointClient(auth=sp_auth)
+    
+    # Example using a local destination (can be S3, Azure, GCS, or Pandas)
+    my_destination = LocalDestination()
+
+    # The download will now automatically display the progress bar
+    await client.download(
+        hostname="your_company.sharepoint.com",
+        site_path="/sites/YourSite",
+        file_path="/Folder/your_file.csv",
+        dest_path="./data/your_file.csv",
+        destination=my_destination
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## 🖥️ Expected Terminal Output
+When enabled, you will get a clean, structured, and bilingual view of the entire operation, regardless of the chosen destination:
+
+```Plaintext
+🚀 [INGESTÃO STREAMING | STREAMING INGESTION] Iniciada em | Started at: YYYY-MM-DD HH:MM:SS
+📍 Destino | Destination: <DestinationClass> -> path/to/your/destination/file.ext
+📂 Origem | Source:  /path/in/sharepoint/file.ext (X.XX GB)
+📦 <DestinationClass>: 100%|███████████████████████████████| X.XXG/X.XXG [MM:SS<00:00, XX.XMB/s]
+
+-------------------------------------------------------
+✅ INGESTÃO CONCLUÍDA COM SUCESSO | INGESTION COMPLETED SUCCESSFULLY
+⏱️ Tempo Total | Total Time: XXX.XXs
+⚡ Velocidade Média | Average Speed: XX.XX MB/s
+🏁 Finalizado em | Finished at: YYYY-MM-DD HH:MM:SS
+-------------------------------------------------------
+```
+
+---
+
+## 📖 3. Exploration: Listing Folders
 
 📦 Required Installation:
 
@@ -78,7 +141,7 @@ asyncio.run(list_files())
 
 ---
 
-## 🌊 3. Ingestion Workflows
+## 🌊 4. Ingestion Workflows
 
 ### 💻 Workflow A: Download to Local Disk
 
@@ -239,7 +302,7 @@ asyncio.run(read_to_memory())
 
 ---
 
-## 🛡️ 4. Resilience (Handling HTTP 429)
+## 🛡️ 5. Resilience (Handling HTTP 429)
 
 Microsoft Graph API strictly throttles heavy requests. spfetch handles this out-of-the-box.
 
