@@ -35,6 +35,20 @@
 
 ---
 
+## 🏗️ Technical Architecture
+
+The library is designed with a layered approach to ensure high throughput and resilience. By decoupling the reading rate from the writing rate, we maximize the performance of both the Microsoft Graph API and Cloud Providers.
+
+<img width="1771" height="826" alt="diagram-spfetch" src="https://github.com/user-attachments/assets/356f1d0d-a29a-4314-8c7c-c257540aaa1f" />
+
+### The Data Pipeline Flow:
+1. **Source (SharePoint):** Chunks are read at a light rate (default 1MB) to avoid API throttling.
+2. **Core (Smart Buffer):** Data is accumulated in a memory buffer managed by the Orchestrator.
+3. **Destination (Cloud):** Once the buffer reaches the set size (e.g., 100MB), a single high-speed write is performed via `fsspec`.
+4. **Resilience:** The `@retry_on_429` shield monitors all requests, applying exponential backoff if the source is overloaded.
+
+---
+
 # 🔐 1. Authentication
 
 Instantiate the client using your Microsoft Entra ID (Azure AD) credentials.
