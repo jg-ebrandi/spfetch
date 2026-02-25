@@ -3,6 +3,9 @@ import httpx
 import fsspec
 import logging
 import io
+import time
+from datetime import datetime
+from tqdm import tqdm
 from typing import Any, Optional
 from urllib.parse import quote
 from .auth import SharePointAuth
@@ -53,6 +56,20 @@ class SharePointClient:
             
         return response.json()["id"]
 
+    @retry_on_429(max_retries=3)
+    async def _get_file_size(self, http_client: httpx.AsyncClient, site_id: str, file_path: str) -> int:
+        """
+        Obtém o tamanho do arquivo em bytes para configurar a barra de progresso.
+        Gets the file size in bytes to configure the progress bar.
+        """
+        clean_file_path = file_path.strip("/")
+        encoded_file_path = quote(clean_file_path, safe='/')
+        url = f"{self.base_graph_url}/sites/{site_id}/drive/root:/{encoded_file_path}"
+        
+        response = await http_client.get(url, headers=self._get_headers())
+        if response.status_code == 200:
+            return response.json().get("size", 0)
+        return 0
 
     # ---------------------------------------------------------
     # TIPO DE INGESTÃO 1: STREAM PARA DESTINO (Disco, S3, GCS)
@@ -68,23 +85,28 @@ class SharePointClient:
         destination: Any = None
     ) -> str:
         """
-        Faz o streaming de um arquivo do SharePoint para um URI de destino.
-        Streams a file from SharePoint to a destination URI.
+        Faz o streaming de um arquivo do SharePoint para um URI de destino com telemetria padronizada.
+        Streams a file from SharePoint to a destination URI with standardized telemetry.
         """
         if destination is None:
             from .destinations import LocalDestination
             destination = LocalDestination()
             
         storage_options = destination.get_storage_options()
+        dest_type = destination.__class__.__name__
         
-        logger.info(f"Iniciando o download de {file_path} para {dest_path}...")
-        logger.info(f"Starting download from {file_path} to {dest_path}...")
+        start_perf = time.perf_counter()
+        start_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        logger.info(f"\n🚀 [INGESTÃO STREAMING | STREAMING INGESTION] Iniciada em | Started at: {start_date}")
+        logger.info(f"📍 Destino | Destination: {dest_type} -> {dest_path}")
         
-        # Adicionamos 'follow_redirects=True' para permitir o redirecionamento 302 da Microsoft
-        # We added 'follow_redirects=True' to allow Microsoft's 302 redirect
         async with httpx.AsyncClient(follow_redirects=True) as http_client:
             
             site_id = await self._get_site_id(http_client, hostname, site_path)
+            total_size = await self._get_file_size(http_client, site_id, file_path)
+            
+            logger.info(f"📂 Origem | Source:  {file_path} ({total_size / (1024**3):.2f} GB)")
             
             clean_file_path = file_path.strip("/")
             encoded_file_path = quote(clean_file_path, safe='/')
@@ -93,16 +115,27 @@ class SharePointClient:
             
             async with http_client.stream("GET", download_url, headers=self._get_headers()) as response:
                 if response.status_code != 200:
-                    logger.error(f"Falha ao baixar o arquivo. Status: {response.status_code}")
-                    logger.error(f"Failed to download the file. Status: {response.status_code}")
+                    logger.error(f"❌ Falha ao baixar o arquivo. Status: {response.status_code} | Failed to download the file. Status: {response.status_code}")
                     response.raise_for_status()
                 
-                with fsspec.open(dest_path, "wb", **storage_options) as f:
-                    async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
-                        f.write(chunk)
+                # Barra de progresso visual adaptável
+                with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"📦 {dest_type}", colour='green') as pbar:
+                    with fsspec.open(dest_path, "wb", **storage_options) as f:
+                        async for chunk in response.aiter_bytes(chunk_size=1024 * 1024): # 1MB chunks
+                            f.write(chunk)
+                            pbar.update(len(chunk))
         
-        logger.info("Download concluído com sucesso!")
-        logger.info("Download completed successfully!")
+        # Cálculos de Performance
+        end_perf = time.perf_counter()
+        duration = end_perf - start_perf
+        avg_speed = (total_size / (1024**2)) / duration if duration > 0 else 0
+        
+        logger.info("\n" + "-" * 55)
+        logger.info(f"✅ INGESTÃO CONCLUÍDA COM SUCESSO | INGESTION COMPLETED SUCCESSFULLY")
+        logger.info(f"⏱️ Tempo Total | Total Time: {duration:.2f}s")
+        logger.info(f"⚡ Velocidade Média | Average Speed: {avg_speed:.2f} MB/s")
+        logger.info(f"🏁 Finalizado em | Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info("-" * 55 + "\n")
                         
         return dest_path
     
@@ -114,11 +147,9 @@ class SharePointClient:
     @retry_on_429(max_retries=3)
     async def read_df(self, hostname: str, site_path: str, file_path: str, **kwargs) -> Any:
         """
-        Baixa um arquivo (Excel ou CSV) do SharePoint diretamente para um DataFrame Pandas.
-        Downloads a file (Excel or CSV) from SharePoint directly into a Pandas DataFrame.
+        Baixa um arquivo do SharePoint diretamente para a RAM (Pandas DataFrame) com telemetria padronizada.
+        Downloads a file from SharePoint directly into RAM (Pandas DataFrame) with standardized telemetry.
         """
-        # Lazy Import: Só exige o Pandas se o dev usar esta função!
-        # Lazy Import: Only requires Pandas if the dev uses this function!
         try:
             import pandas as pd
         except ImportError:
@@ -126,38 +157,60 @@ class SharePointClient:
             logger.error(erro_msg)
             raise ImportError(erro_msg)
 
-        logger.info(f"Lendo o arquivo {file_path} para a memória...")
-        logger.info(f"Reading file {file_path} into memory...")
+        start_perf = time.perf_counter()
+        start_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        logger.info(f"\n🚀 [INGESTÃO MEMÓRIA | MEMORY INGESTION] Iniciada em | Started at: {start_date}")
+        logger.info(f"📍 Destino | Destination: Pandas DataFrame (RAM)")
         
         async with httpx.AsyncClient(follow_redirects=True) as http_client:
             site_id = await self._get_site_id(http_client, hostname, site_path)
+            total_size = await self._get_file_size(http_client, site_id, file_path)
+            
+            logger.info(f"📂 Origem | Source:  {file_path} ({total_size / (1024**2):.2f} MB)")
+            
             clean_file_path = file_path.strip("/")
             encoded_file_path = quote(clean_file_path, safe='/')
             
             download_url = f"{self.base_graph_url}/sites/{site_id}/drive/root:/{encoded_file_path}:/content"
             
-            response = await http_client.get(download_url, headers=self._get_headers())
+            # Usando streaming também para o Pandas para atualizar a barra de progresso
+            virtual_file = io.BytesIO()
+            async with http_client.stream("GET", download_url, headers=self._get_headers()) as response:
+                if response.status_code != 200:
+                    logger.error(f"❌ Falha ao ler o arquivo. Status: {response.status_code} | Failed to read the file. Status: {response.status_code}")
+                    response.raise_for_status()
+                
+                with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"📦 Pandas DF", colour='blue') as pbar:
+                    async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
+                        virtual_file.write(chunk)
+                        pbar.update(len(chunk))
             
-            if response.status_code != 200:
-                logger.error(f"Falha ao ler o arquivo. Status: {response.status_code}")
-                logger.error(f"Failed to read the file. Status: {response.status_code}")
-                response.raise_for_status()
+            virtual_file.seek(0)
             
-            virtual_file = io.BytesIO(response.content)
-            
-            # Decide qual motor usar com base na extensão do arquivo
-            # Decides which engine to use based on the file extension
             file_lower = file_path.lower()
             if file_lower.endswith('.csv'):
-                logger.info("Convertendo bytes para Pandas DataFrame (Formato CSV)...")
-                return pd.read_csv(virtual_file, **kwargs)
+                df = pd.read_csv(virtual_file, **kwargs)
             elif file_lower.endswith(('.xlsx', '.xls')):
-                logger.info("Convertendo bytes para Pandas DataFrame (Formato Excel)...")
-                return pd.read_excel(virtual_file, **kwargs)
+                df = pd.read_excel(virtual_file, **kwargs)
             else:
                 erro_msg = "Formato não suportado. Use .csv, .xlsx ou .xls / Unsupported format. Use .csv, .xlsx, or .xls"
                 logger.error(erro_msg)
                 raise ValueError(erro_msg)
+            
+            # Cálculos de Performance
+            end_perf = time.perf_counter()
+            duration = end_perf - start_perf
+            avg_speed = (total_size / (1024**2)) / duration if duration > 0 else 0
+            
+            logger.info("\n" + "-" * 55)
+            logger.info(f"✅ INGESTÃO CONCLUÍDA COM SUCESSO | INGESTION COMPLETED SUCCESSFULLY")
+            logger.info(f"📊 Dimensões | Dimensions: {df.shape[0]} linhas/rows x {df.shape[1]} colunas/cols")
+            logger.info(f"⏱️ Tempo Total | Total Time: {duration:.2f}s | ⚡ Vel. Média | Avg Speed: {avg_speed:.2f} MB/s")
+            logger.info(f"🏁 Finalizado em | Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info("-" * 55 + "\n")
+            
+            return df
             
             
     # ---------------------------------------------------------
@@ -170,7 +223,7 @@ class SharePointClient:
         Lista o conteúdo de uma pasta no SharePoint e retorna metadados.
         Lists SharePoint folder contents and returns metadata.
         """
-        logger.info(f"Iniciando listagem da pasta: '{folder_path}' em {site_path}")
+        logger.info(f"Iniciando listagem da pasta: '{folder_path}' em {site_path} | Starting listing of folder: '{folder_path}' in {site_path}")
         
         async with httpx.AsyncClient(follow_redirects=True) as http_client:
             # 1. Resolve o Site ID
@@ -184,17 +237,17 @@ class SharePointClient:
             else:
                 endpoint = f"{self.base_graph_url}/sites/{site_id}/drive/root/children"
 
-            logger.debug(f"Requisição para endpoint: {endpoint}")
+            logger.debug(f"Requisição para endpoint: {endpoint} | Request to endpoint: {endpoint}")
             
             # 3. Executa a chamada com os headers de autenticação
             response = await http_client.get(endpoint, headers=self._get_headers())
             
             if response.status_code != 200:
-                logger.error(f"Erro na API Graph (Status {response.status_code}): {response.text}")
+                logger.error(f"Erro na API Graph (Status {response.status_code}): {response.text} | Graph API Error (Status {response.status_code}): {response.text}")
                 response.raise_for_status()
 
             items = response.json().get("value", [])
-            logger.info(f"Sucesso: {len(items)} itens encontrados em '{folder_path}'.")
+            logger.info(f"Sucesso: {len(items)} itens encontrados em '{folder_path}'. | Success: {len(items)} items found in '{folder_path}'.")
 
         # 4. Retorna metadados estruturados
         return [

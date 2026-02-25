@@ -6,13 +6,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spfetch"
-version = "0.1.1"
+version = "0.1.2"
 description = "Simple. Streaming. Resilient. MFA-ready. Fetch files from SharePoint via Microsoft Graph."
 readme = "README.md"
 requires-python = ">=3.8"
 license = {file = "LICENSE"}
 authors = [
-    {name = "João Guilherme Brandi"} # Adicionei seu nome baseado na LICENSE
+    {name = "João Guilherme Evangelista Brandi"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -32,6 +32,7 @@ classifiers = [
 dependencies = [
     "msal>=1.20.0",
     "httpx>=0.24.0",
+    "tqdm>=4.66.0",
     "fsspec>=2023.1.0"
 ]
 
