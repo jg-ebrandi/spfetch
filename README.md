@@ -11,114 +11,135 @@
 
 ## ✨ What is spfetch?
 
-`spfetch` is an asynchronous Python library built for data pipelines:
+`spfetch` is an asynchronous Python library built for modern data pipelines:
 
-- 📂 **List** SharePoint folders with structured metadata.
-- ⬇️ **Stream** large files directly to Local Disk, S3, GCS, or Azure without memory crashes.
-- 📊 **Load** small files directly into Pandas DataFrames.
-- 🔐 **Authenticate** via MFA (Device Code) or Silent (Client Secret) flows.
-- 🛡️ **Auto-Recover** from Microsoft API Throttling (HTTP 429) using Exponential Backoff.
+- 📂 **List** SharePoint folders with structured metadata  
+- ⬇️ **Stream** large files directly to Local Disk, S3, GCS, or Azure without memory crashes  
+- ⚡ **Smart Buffering** – Control chunk and buffer sizes to optimize Cloud I/O (50+ MB/s)  
+- 📊 **Load** small files directly into Pandas DataFrames  
+- 🔐 **Authenticate** via MFA (Device Code) or Silent (Client Secret) flows  
+- 🛡️ **Auto-Recover** from Microsoft API Throttling (HTTP 429) with Exponential Backoff  
 
 ---
 
-## 🔐 1. Authentication
+## 🚀 Performance Benchmark (v0.1.3)
 
-Before running any workflow, you must instantiate the client with your Microsoft Entra ID (Azure AD) credentials.
+**Zero Intermediate Disk Architecture + Smart Buffering**
+
+**Benchmark Results**
+
+- **Payload:** 10.10 GB CSV (SharePoint ➡ Azure Data Lake)  
+- **Time:** 3m 11s (191.96s)  
+- **Average Speed:** 53.87 MB/s  
+- **Config:** `chunk_size_mb=1` | `buffer_size_mb=100`
+
+---
+
+# 🔐 1. Authentication
+
+Instantiate the client using your Microsoft Entra ID (Azure AD) credentials.
+
+---
 
 ### Option A: Interactive / Local (Device Code Flow)
+
 Ideal for local scripts. Supports MFA.
 
 ```python
 from spfetch.auth import DeviceCodeAuth
 from spfetch.client import SharePointClient
 
-auth = DeviceCodeAuth(tenant_id="<YOUR_TENANT_ID>", client_id="<YOUR_CLIENT_ID>")
+auth = DeviceCodeAuth(
+    tenant_id="<YOUR_TENANT_ID>",
+    client_id="<YOUR_CLIENT_ID>"
+)
+
 client = SharePointClient(auth=auth)
 ```
 
-### Option B: Automated / CI-CD (Client Secret Flow)
-Ideal for Airflow, Databricks, or GitHub Actions.
+---
+
+### Option B: Automated / CI/CD (Client Secret Flow)
+
+Ideal for Airflow, Databricks, GitHub Actions.
 
 ```python
 from spfetch.auth import ClientSecretAuth
 from spfetch.client import SharePointClient
 
 auth = ClientSecretAuth(
-    tenant_id="<YOUR_TENANT_ID>", 
-    client_id="<YOUR_CLIENT_ID>", 
+    tenant_id="<YOUR_TENANT_ID>",
+    client_id="<YOUR_CLIENT_ID>",
     client_secret="<YOUR_CLIENT_SECRET>"
 )
+
 client = SharePointClient(auth=auth)
 ```
 
 ---
 
-## 📊 2. Telemetry and Progress Bar (Logging)
+# 📊 2. Telemetry & Dual Progress Bar
 
-By default, **spfetch** follows Python's golden rule and does not force any logging configuration on your environment (`NullHandler`). It also automatically silences verbose logs from third-party libraries (such as Azure/S3/GCS SDKs and `httpx`) to keep your terminal clean.
+By default, `spfetch` does not override your logging configuration (uses `NullHandler`).
 
-If you are running standalone scripts, Jupyter notebooks, or simply want to visualize the download status in real-time, just import and call the `enable_console_logs()` function. 
-
-This will activate a **native progress bar (via tqdm)** and display bilingual transfer speed metrics (Portuguese/English):
+To enable structured logs and dual progress bars:
 
 ```python
 import asyncio
 from spfetch.auth import ClientSecretAuth
 from spfetch.client import SharePointClient
 from spfetch.destinations import LocalDestination
+from spfetch import enable_console_logs # <-- Add this line
 
-# 1. Import the helper function
-from spfetch import enable_console_logs
-
-# 2. Enable clean logs and the progress bar in the terminal
-enable_console_logs()
+enable_console_logs() # <-- Add this line
 
 async def main():
-    sp_auth = ClientSecretAuth(
+    auth = ClientSecretAuth(
         tenant_id="YOUR_TENANT_ID",
         client_id="YOUR_CLIENT_ID",
         client_secret="YOUR_CLIENT_SECRET"
     )
-    client = SharePointClient(auth=sp_auth)
-    
-    # Example using a local destination (can be S3, Azure, GCS, or Pandas)
-    my_destination = LocalDestination()
 
-    # The download will now automatically display the progress bar
+    client = SharePointClient(auth=auth)
+    destination = LocalDestination()
+
     await client.download(
         hostname="your_company.sharepoint.com",
         site_path="/sites/YourSite",
         file_path="/Folder/your_file.csv",
         dest_path="./data/your_file.csv",
-        destination=my_destination
+        destination=destination
     )
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## 🖥️ Expected Terminal Output
-When enabled, you will get a clean, structured, and bilingual view of the entire operation, regardless of the chosen destination:
+---
 
-```Plaintext
-🚀 [INGESTÃO STREAMING | STREAMING INGESTION] Iniciada em | Started at: YYYY-MM-DD HH:MM:SS
-📍 Destino | Destination: <DestinationClass> -> path/to/your/destination/file.ext
-📂 Origem | Source:  /path/in/sharepoint/file.ext (X.XX GB)
-📦 <DestinationClass>: 100%|███████████████████████████████| X.XXG/X.XXG [MM:SS<00:00, XX.XMB/s]
+### 🖥️ Expected Terminal Output
+
+```text
+🚀 [INGESTÃO STREAMING | STREAMING INGESTION] Started at: YYYY-MM-DD HH:MM:SS
+📍 Destination: <DestinationClass> -> path/to/file.ext (Chunk: 1MB | Buffer: 16MB)
+📂 Source: /path/in/sharepoint/file.ext (X.XX GB)
+
+📥 Reading | Leitura: 100%|███████████████| X.XXG/X.XXG [MM:SS<00:00, XX.XMB/s]
+📤 Saving | Salvando: 100%|███████████████| X.XXG/X.XXG [MM:SS<00:00, XX.XMB/s]
 
 -------------------------------------------------------
-✅ INGESTÃO CONCLUÍDA COM SUCESSO | INGESTION COMPLETED SUCCESSFULLY
-⏱️ Tempo Total | Total Time: XXX.XXs
-⚡ Velocidade Média | Average Speed: XX.XX MB/s
-🏁 Finalizado em | Finished at: YYYY-MM-DD HH:MM:SS
+✅ INGESTION COMPLETED SUCCESSFULLY
+⏱ Total Time: XXX.XXs
+⚡ Average Speed: XX.XX MB/s
+🏁 Finished at: YYYY-MM-DD HH:MM:SS
 -------------------------------------------------------
 ```
 
 ---
 
-## 📖 3. Exploration: Listing Folders
+# 📖 3. Exploration – Listing Folders
 
-📦 Required Installation:
+📦 Installation:
 
 ```bash
 pip install spfetch
@@ -133,6 +154,7 @@ async def list_files():
         site_path="/sites/<YourSite>",
         folder_path="/Shared Documents/General"
     )
+
     for item in items:
         print(item["name"], item["size"], item["is_folder"])
 
@@ -141,41 +163,13 @@ asyncio.run(list_files())
 
 ---
 
-## 🌊 4. Ingestion Workflows
-
-### 💻 Workflow A: Download to Local Disk
-
-📦 Required Installation:
-
-```bash
-pip install spfetch
-```
-
-```python
-from spfetch.destinations import LocalDestination
-import asyncio
-
-async def download_local():
-    # 1. Setup local destination
-    dest = LocalDestination()
-    
-    # 2. Stream to disk
-    await client.download(
-        hostname="<tenant>.sharepoint.com",
-        site_path="/sites/<YourSite>",
-        file_path="/Shared Documents/Data/file.csv",
-        dest_path="./local_downloads/file.csv",  # Local file path
-        destination=dest
-    )
-
-asyncio.run(download_local())
-```
+# 🌊 4. Ingestion Workflows
 
 ---
 
-### ☁️ Workflow B: Download directly to Azure (ADLS / Blob)
+## ☁️ A) Azure (ADLS / Blob)
 
-📦 Required Installation:
+📦 Installation:
 
 ```bash
 pip install "spfetch[azure]"
@@ -186,19 +180,19 @@ from spfetch.destinations import AzureDestination
 import asyncio
 
 async def download_to_azure():
-    # 1. Setup Azure credentials
-    dest = AzureDestination(
+    destination = AzureDestination(
         account_name="<YOUR_STORAGE_ACCOUNT_NAME>",
-        account_key="<YOUR_STORAGE_ACCOUNT_KEY>"  # Or sas_token="<YOUR_SAS_TOKEN>"
+        account_key="<YOUR_STORAGE_ACCOUNT_KEY>"
     )
-    
-    # 2. Stream directly to Azure (abfs://)
+
     await client.download(
         hostname="<tenant>.sharepoint.com",
         site_path="/sites/<YourSite>",
         file_path="/Shared Documents/Data/file.parquet",
-        dest_path="abfs://<container_name>/bronze/file.parquet",
-        destination=dest
+        dest_path="abfs://<container>/bronze/file.parquet",
+        destination=destination,
+        chunk_size_mb=1,
+        buffer_size_mb=100
     )
 
 asyncio.run(download_to_azure())
@@ -206,9 +200,9 @@ asyncio.run(download_to_azure())
 
 ---
 
-### ☁️ Workflow C: Download directly to Amazon S3
+## ☁️ B) Amazon S3
 
-📦 Required Installation:
+📦 Installation:
 
 ```bash
 pip install "spfetch[s3]"
@@ -219,19 +213,19 @@ from spfetch.destinations import S3Destination
 import asyncio
 
 async def download_to_s3():
-    # 1. Setup AWS credentials
-    dest = S3Destination(
+    destination = S3Destination(
         key="<AWS_ACCESS_KEY_ID>",
         secret="<AWS_SECRET_ACCESS_KEY>"
     )
-    
-    # 2. Stream directly to S3 (s3://)
+
     await client.download(
         hostname="<tenant>.sharepoint.com",
         site_path="/sites/<YourSite>",
         file_path="/Shared Documents/Data/file.csv",
-        dest_path="s3://<bucket_name>/raw/file.csv",
-        destination=dest
+        dest_path="s3://<bucket>/raw/file.csv",
+        destination=destination,
+        chunk_size_mb=1,
+        buffer_size_mb=16
     )
 
 asyncio.run(download_to_s3())
@@ -239,9 +233,9 @@ asyncio.run(download_to_s3())
 
 ---
 
-### ☁️ Workflow D: Download directly to Google Cloud Storage (GCS)
+## ☁️ C) Google Cloud Storage (GCS)
 
-📦 Required Installation:
+📦 Installation:
 
 ```bash
 pip install "spfetch[gcs]"
@@ -252,19 +246,17 @@ from spfetch.destinations import GCSDestination
 import asyncio
 
 async def download_to_gcs():
-    # 1. Setup GCS credentials (can use default environment or token path)
-    dest = GCSDestination(
+    destination = GCSDestination(
         project="<my-gcp-project-id>",
-        token="google_default"  # Or path to service_account.json
+        token="google_default"
     )
-    
-    # 2. Stream directly to GCS (gs://)
+
     await client.download(
         hostname="<tenant>.sharepoint.com",
         site_path="/sites/<YourSite>",
         file_path="/Shared Documents/Data/file.csv",
-        dest_path="gs://<bucket_name>/raw/file.csv",
-        destination=dest
+        dest_path="gs://<bucket>/raw/file.csv",
+        destination=destination
     )
 
 asyncio.run(download_to_gcs())
@@ -272,21 +264,46 @@ asyncio.run(download_to_gcs())
 
 ---
 
-### 📊 Workflow E: Read directly to Pandas DataFrame
+## 💻 D) Local Disk
 
-📦 Required Installation:
+📦 Installation:
+
+```bash
+pip install spfetch
+```
+
+```python
+from spfetch.destinations import LocalDestination
+import asyncio
+
+async def download_local():
+    destination = LocalDestination()
+
+    await client.download(
+        hostname="<tenant>.sharepoint.com",
+        site_path="/sites/<YourSite>",
+        file_path="/Shared Documents/Data/file.csv",
+        dest_path="./local_downloads/file.csv",
+        destination=destination
+    )
+
+asyncio.run(download_local())
+```
+
+---
+
+## 📊 E) Read Directly to Pandas
+
+📦 Installation:
 
 ```bash
 pip install "spfetch[pandas]"
 ```
 
-Ideal for smaller files (`.csv`, `.xlsx`). This method skips saving to disk and loads the file straight into memory.
-
 ```python
 import asyncio
 
 async def read_to_memory():
-    # client.read_df accepts all standard pandas kwargs (sheet_name, sep, skiprows, etc.)
     df = await client.read_df(
         hostname="<tenant>.sharepoint.com",
         site_path="/sites/<YourSite>",
@@ -295,6 +312,7 @@ async def read_to_memory():
         skiprows=2,
         usecols="A:D"
     )
+
     print(df.head())
 
 asyncio.run(read_to_memory())
@@ -302,27 +320,35 @@ asyncio.run(read_to_memory())
 
 ---
 
-## 🛡️ 5. Resilience (Handling HTTP 429)
+# 🛡️ 5. Resilience – Handling HTTP 429
 
-Microsoft Graph API strictly throttles heavy requests. spfetch handles this out-of-the-box.
+`spfetch` automatically handles Microsoft Graph throttling.
 
-If a `429 Too Many Requests` occurs, the client automatically:
+If `HTTP 429 Too Many Requests` occurs:
 
-- Pauses execution.
-- Reads the `Retry-After` header.
-- Applies Exponential Backoff.
-- Retries seamlessly (up to 5 times for downloads).
+1. Execution pauses  
+2. `Retry-After` header is read  
+3. Exponential Backoff is applied  
+4. Retries up to 5 times  
 
-Your pipeline won't crash; it will simply wait and recover gracefully.
-
----
-
-## 🤝 Contributing
-
-PRs are welcome! Check our `CONTRIBUTING.md`. Ensure all tests pass via `make test`.
+Your pipeline will wait and recover gracefully instead of crashing.
 
 ---
 
-## 📄 License
+# 🤝 Contributing
 
-MIT
+Pull Requests are welcome.
+
+Before submitting:
+
+```bash
+make test
+```
+
+Ensure all tests pass.
+
+---
+
+# 📄 License
+
+MIT License
