@@ -1,6 +1,5 @@
 # tests/test_client_init.py
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from spfetch.auth import DeviceCodeAuth
 from spfetch.client import SharePointClient
 

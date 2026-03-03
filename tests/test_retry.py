@@ -1,6 +1,6 @@
 import pytest
 import httpx
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from spfetch.client import SharePointClient
 
 

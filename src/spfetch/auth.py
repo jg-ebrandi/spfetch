@@ -56,9 +56,9 @@ class DeviceCodeAuth(SharePointAuth):
         codigo_usuario = flow.get("user_code")
 
         print(f"\n[AÇÃO NECESSÁRIA / ACTION REQUIRED]: {flow['message']}")
-        print(f"======================================================")
+        print("======================================================")
         print(f"👉 CÓDIGO / CODE: {codigo_usuario}")
-        print(f"======================================================\n")
+        print("======================================================\n")
 
         # Tenta abrir o navegador automaticamente
         # Attempts to open the browser automatically
