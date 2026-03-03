@@ -4,6 +4,7 @@ import httpx
 from unittest.mock import MagicMock, patch, AsyncMock
 from spfetch.client import SharePointClient
 
+
 @pytest.mark.asyncio
 async def test_ls_success():
     """
@@ -12,9 +13,9 @@ async def test_ls_success():
     # 1. Mock do Auth
     mock_auth = MagicMock()
     mock_auth.get_token = AsyncMock(return_value="fake_token")
-    
+
     client = SharePointClient(auth=mock_auth)
-    
+
     # 2. Mock da resposta da API Graph
     mock_response_data = {
         "value": [
@@ -24,7 +25,7 @@ async def test_ls_success():
                 "size": 0,
                 "id": "123",
                 "lastModifiedDateTime": "2024-01-01T00:00:00Z",
-                "webUrl": "https://..."
+                "webUrl": "https://...",
             },
             {
                 "name": "Data.csv",
@@ -32,13 +33,15 @@ async def test_ls_success():
                 "size": 1024,
                 "id": "456",
                 "lastModifiedDateTime": "2024-01-02T00:00:00Z",
-                "webUrl": "https://..."
-            }
+                "webUrl": "https://...",
+            },
         ]
     }
 
     # 3. Patch nos métodos internos para evitar chamadas reais
-    with patch.object(SharePointClient, "_get_site_id", AsyncMock(return_value="site_id_123")):
+    with patch.object(
+        SharePointClient, "_get_site_id", AsyncMock(return_value="site_id_123")
+    ):
         with patch.object(httpx.AsyncClient, "get") as mock_get:
             # Configura o retorno simulado do httpx
             mock_resp = MagicMock()

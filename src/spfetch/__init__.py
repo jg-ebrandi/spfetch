@@ -15,24 +15,25 @@ from .exceptions import SPFetchError, AuthenticationError
 
 # 1. Cria o logger padrão da biblioteca / Creates the standard library logger
 logger = logging.getLogger("spfetch")
-logger.addHandler(logging.NullHandler()) 
+logger.addHandler(logging.NullHandler())
 
 # 2. Silencia bibliotecas de terceiros que são muito verbosas no nível INFO
 # Silences third-party libraries that are too verbose at the INFO level
 noisy_loggers = [
-    "azure",                                            # Azure Core
-    "azure.core.pipeline.policies.http_logging_policy", # Azure Blob Storage uploads
-    "httpx",                                            # Graph API requests
-    "httpcore",                                         # httpx engine
-    "adlfs",                                            # Azure native data lake/blob
-    "s3fs",                                             # Amazon S3
-    "gcsfs",                                            # Google Cloud Storage
-    "fsspec",                                           # File system engine
-    "urllib3"                                           # Generic requests
+    "azure",  # Azure Core
+    "azure.core.pipeline.policies.http_logging_policy",  # Azure Blob Storage uploads
+    "httpx",  # Graph API requests
+    "httpcore",  # httpx engine
+    "adlfs",  # Azure native data lake/blob
+    "s3fs",  # Amazon S3
+    "gcsfs",  # Google Cloud Storage
+    "fsspec",  # File system engine
+    "urllib3",  # Generic requests
 ]
 
 for name in noisy_loggers:
     logging.getLogger(name).setLevel(logging.WARNING)
+
 
 def enable_console_logs():
     """
@@ -40,7 +41,9 @@ def enable_console_logs():
     SPfetch activation on the terminal.
     """
     import logging
-    logging.basicConfig(level=logging.INFO, format='%(message)s')
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
 
 # ==============================================================================
 
@@ -56,5 +59,5 @@ __all__ = [
     "AzureDestination",
     "SPFetchError",
     "enable_console_logs",
-    "AuthenticationError"
+    "AuthenticationError",
 ]

@@ -43,9 +43,9 @@ The library is designed with a layered approach to ensure high throughput and re
 
 ### The Data Pipeline Flow:
 1. **Source (SharePoint):** Chunks are read at a light rate (default 1MB) to avoid API throttling.
-2. **Core (Smart Buffer):** Data is accumulated in a memory buffer managed by the Orchestrator.
+2. **Core (Smart Buffer & Router):** Data is accumulated in a memory buffer. The Smart Router dynamically distributes multiple files across isolated Async Workers.
 3. **Destination (Cloud):** Once the buffer reaches the set size (e.g., 100MB), a single high-speed write is performed via `fsspec`.
-4. **Resilience:** The `@retry_on_429` shield monitors all requests, applying exponential backoff if the source is overloaded.
+4. **Resilience:** The `@retry_on_429` shield monitors all requests, while internal loop-retries protect individual files from network drops.
 
 ---
 
@@ -134,18 +134,19 @@ if __name__ == "__main__":
 ### 🖥️ Expected Terminal Output
 
 ```text
-🚀 [INGESTÃO STREAMING | STREAMING INGESTION] Started at: YYYY-MM-DD HH:MM:SS
-📍 Destination: <DestinationClass> -> path/to/file.ext (Chunk: 1MB | Buffer: 16MB)
-📂 Source: /path/in/sharepoint/file.ext (X.XX GB)
+🚀 Iniciando Ingestão | Starting Ingestion (Number of files: 3 | concurrency: 3)
 
-📥 Reading | Leitura: 100%|███████████████| X.XXG/X.XXG [MM:SS<00:00, XX.XMB/s]
-📤 Saving | Salvando: 100%|███████████████| X.XXG/X.XXG [MM:SS<00:00, XX.XMB/s]
-
--------------------------------------------------------
 ✅ INGESTION COMPLETED SUCCESSFULLY
-⏱ Total Time: XXX.XXs
-⚡ Average Speed: XX.XX MB/s
-🏁 Finished at: YYYY-MM-DD HH:MM:SS
+📂 Source | Fonte: Data/file1.csv (1.00 GB)
+📍 Destination | Destino: AzureDestination -> abfs://landing/file1.csv (Chunk: 2MB | Buffer: 50MB)
+
+⌛ Total Time | Tempo total: 40.07s
+🚀 Started at | Começou em: 2026-03-01 01:41:18
+🏁 Finished at | Terminou em: 2026-03-01 01:41:58
+⚡ Average Speed | Velocidade média: 25.20 MB/s
+
+📥 Reading | Leitura: 100%|█████████████████████████████████████████████| 1024.0M/1024.0M [00:40<00:00, 25.2MB/s]
+📤 Saving  | Salvando: 100%|█████████████████████████████████████████████| 1024.0M/1024.0M [00:40<00:00, 25.2MB/s]
 -------------------------------------------------------
 ```
 
@@ -177,7 +178,44 @@ asyncio.run(list_files())
 
 ---
 
-# 🌊 4. Ingestion Workflows
+# 🚀 4. Concurrent Batch Downloads & Smart UI
+
+`spfetch` allows you to download multiple files in parallel using the `max_concurrency` parameter. You can pass the files as a Python `List` or as a pipe-separated string `|`.
+
+The library uses an advanced `tqdm` slot-manager to display concurrent progress bars without polluting your terminal. Once a file finishes, the animation disappears and leaves a clean, static audit log behind.
+
+```python
+import asyncio
+from spfetch.auth import ClientSecretAuth
+from spfetch.client import SharePointClient
+from spfetch.destinations import AzureDestination
+
+async def main():
+    auth = ClientSecretAuth(tenant_id="...", client_id="...", client_secret="...")
+    client = SharePointClient(auth=auth)
+    azure_dest = AzureDestination(account_name="...", account_key="...")
+
+    # Pass multiple files separated by pipe "|"
+    arquivos_origem = "Data/file1.csv | Data/file2.csv | Data/file3.csv"
+    arquivos_destino = "abfs://landing/file1.csv | abfs://landing/file2.csv | abfs://landing/file3.csv"
+
+    await client.download(
+        hostname="your_company.sharepoint.com",
+        site_path="/sites/YourSite",
+        file_path=arquivos_origem,
+        dest_path=arquivos_destino,
+        destination=azure_dest,
+        chunk_size_mb=2,
+        buffer_size_mb=50,
+        max_concurrency=3 # <-- 🚀 3 files will be downloaded simultaneously!
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+---
+
+# 🌊 5. Ingestion Workflows
 
 ---
 
@@ -334,16 +372,15 @@ asyncio.run(read_to_memory())
 
 ---
 
-# 🛡️ 5. Resilience – Handling HTTP 429
+# 🛡️ 6. Resilience – Handling Failures
 
-`spfetch` automatically handles Microsoft Graph throttling.
+`spfetch` automatically protects your pipeline at two levels:
 
-If `HTTP 429 Too Many Requests` occurs:
-
-1. Execution pauses  
-2. `Retry-After` header is read  
-3. Exponential Backoff is applied  
-4. Retries up to 5 times  
+1. **Microsoft Graph API Throttling (HTTP 429):**
+   If `HTTP 429 Too Many Requests` occurs, the execution pauses, reads the `Retry-After` header, applies Exponential Backoff, and retries up to 5 times.
+   
+2. **Network Drops during Concurrent Downloads:**
+   If a file connection drops midway through downloading a batch, its specific worker catches the error, waits 3 seconds, and restarts **only that file** (up to 3 attempts), while other files continue streaming at max speed.
 
 Your pipeline will wait and recover gracefully instead of crashing.
 
@@ -356,6 +393,8 @@ Pull Requests are welcome.
 Before submitting:
 
 ```bash
+make format
+make lint
 make test
 ```
 
